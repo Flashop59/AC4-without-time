@@ -67,7 +67,7 @@ def process_csv_data(gps_data, show_hull_points):
     gps_data['lng'] = gps_data['lon'].astype(float)
 
     coords = gps_data[['lat', 'lng']].values
-    db = DBSCAN(eps=0.0001, min_samples=12).fit(coords)
+    db = DBSCAN(eps=0.00004, min_samples=12).fit(coords)
     gps_data['field_id'] = db.labels_
 
     fields = gps_data[gps_data['field_id'] != -1]
