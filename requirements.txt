@@ -1,0 +1,11 @@
+streamlit
+pandas
+numpy
+shapely
+scikit-learn
+scipy
+folium
+geopy
+alphashape
+streamlit-folium
+triangle
