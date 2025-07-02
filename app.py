@@ -71,7 +71,8 @@ def generate_more_hull_points(coords, num_splits=3):
 
 # ------------------------ PROCESSING ------------------------
 def process_gps_data(df, show_hull):
-    coords_split = df["Address"].str.split(",", expand=True)
+    # Assuming latlong are in column F (index 5)
+    coords_split = df.iloc[:, 5].str.split(",", expand=True)
     df["lat"] = coords_split[0].astype(str).str.strip()
     df["lng"] = coords_split[1].astype(str).str.strip()
 
@@ -130,12 +131,7 @@ def process_gps_data(df, show_hull):
     summary_df = pd.DataFrame({
         "Field ID": field_areas_gunthas.index,
         "Area (Gunthas)": field_areas_gunthas.values,
-        "Travel Distance to Next Field (km)": travel_distances,
-        "Sales/Demo ID": df["Sales/Demo ID"],  # New column for Sales/Demo ID
-        "Breakdown Time": df["Breakdown Time"],  # New column for Breakdown Time
-        "Problem Description": df["Problem Description"],  # New column for Problem Description
-        "Photos": df["Photos"],  # New column for Photos
-        "Videos": df["Videos"]  # New column for Videos
+        "Travel Distance to Next Field (km)": travel_distances
     })
 
     total_area = field_areas_gunthas.sum()
@@ -190,23 +186,17 @@ def process_gps_data(df, show_hull):
 # ------------------------ STREAMLIT APP ------------------------
 def main():
     st.set_page_config(page_title="Field Analyzer", layout="wide")
-    st.title("Field CSV Analyzer (Lat/Lon from Address)")
+    st.title("Field CSV Analyzer (Lat/Lon from Column F)")
 
-    uploaded = st.file_uploader("Upload CSV with 'Address' column containing 'lat,lon'", type=["csv"])
+    uploaded = st.file_uploader("Upload CSV with 'lat,lon' data in column F", type=["csv"])
     show_hull = st.checkbox("Show Concave Hulls", value=True)
 
     if uploaded:
         df = pd.read_csv(uploaded)
 
-        if "Address" not in df.columns:
-            st.error("CSV must have an 'Address' column with lat,lon format.")
+        if df.shape[1] < 6:
+            st.error("CSV must have at least 6 columns (latitude and longitude in column F).")
             return
-
-        required_columns = ["Sales/Demo ID", "Breakdown Time", "Problem Description", "Photos", "Videos"]
-        for col in required_columns:
-            if col not in df.columns:
-                st.error(f"CSV must include the '{col}' column.")
-                return
 
         result = process_gps_data(df, show_hull)
 
