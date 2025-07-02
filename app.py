@@ -15,8 +15,19 @@ st.set_page_config(page_title="Field Analyzer", layout="wide")
 
 def extract_coordinates(df):
     df = df.copy()
-    df = df[df.iloc[:, 5].notna()]  # 6th column expected to be latlon
-    latlon_split = df.iloc[:, 5].str.split(",", expand=True)
+    
+    # Ensure column F exists and is not empty
+    if df.shape[1] < 6:
+        raise ValueError("Expected at least 6 columns with GPS coordinates in column F.")
+
+    df = df[df.iloc[:, 5].notna()]
+    latlon_series = df.iloc[:, 5].astype(str)
+
+    # Split GPS coordinates into lat and lon
+    latlon_split = latlon_series.str.split(",", expand=True)
+    if latlon_split.shape[1] < 2:
+        raise ValueError("Column F should contain GPS coordinates in 'lat,lon' format.")
+
     df["latitude"] = pd.to_numeric(latlon_split[0], errors="coerce")
     df["longitude"] = pd.to_numeric(latlon_split[1], errors="coerce")
     df.dropna(subset=["latitude", "longitude"], inplace=True)
@@ -87,8 +98,8 @@ def render_map(coords, field_polygons, show_hull):
 
     map_center = [coords["latitude"].mean(), coords["longitude"].mean()]
     fmap = folium.Map(location=map_center, zoom_start=17, tiles='CartoDB Positron')
-
     folium.TileLayer("Esri.WorldImagery").add_to(fmap)
+
     marker_cluster = MarkerCluster().add_to(fmap)
 
     for idx, row in coords.iterrows():
@@ -123,7 +134,7 @@ if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file)
         summary, field_polygons, coords = process_data(df, show_hull)
-        st.success("Data Processed Successfully.")
+        st.success("✅ Data Processed Successfully.")
 
         # Display Summary Table
         summary_df = pd.DataFrame(summary)
@@ -144,4 +155,4 @@ if uploaded_file:
         st.download_button("📥 Download Summary as CSV", csv_buf.getvalue(), file_name="field_summary.csv")
 
     except Exception as e:
-        st.error(f"Error processing file: {e}")
+        st.error(f"❌ Error processing file:\n\n{e}")
