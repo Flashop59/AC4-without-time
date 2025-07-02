@@ -2,32 +2,34 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.cluster import DBSCAN
-from shapely.geometry import Point, Polygon, MultiPoint
+from shapely.geometry import Polygon, MultiPoint
 from shapely.ops import unary_union
 from geopy.distance import geodesic
 import folium
 from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
-import math
 import io
 
 st.set_page_config(page_title="Field Analyzer", layout="wide")
 
 def extract_coordinates(df):
     df = df.copy()
-    
-    # Ensure column F exists and is not empty
+
     if df.shape[1] < 6:
         raise ValueError("Expected at least 6 columns with GPS coordinates in column F.")
 
+    # Ensure non-empty entries
     df = df[df.iloc[:, 5].notna()]
-    latlon_series = df.iloc[:, 5].astype(str)
+    latlon_series = df.iloc[:, 5].astype(str).str.strip()
 
-    # Split GPS coordinates into lat and lon
+    # Keep only valid entries with comma
+    latlon_series = latlon_series[latlon_series.str.contains(",")]
     latlon_split = latlon_series.str.split(",", expand=True)
+
     if latlon_split.shape[1] < 2:
         raise ValueError("Column F should contain GPS coordinates in 'lat,lon' format.")
 
+    df = df.loc[latlon_split.index]
     df["latitude"] = pd.to_numeric(latlon_split[0], errors="coerce")
     df["longitude"] = pd.to_numeric(latlon_split[1], errors="coerce")
     df.dropna(subset=["latitude", "longitude"], inplace=True)
@@ -38,9 +40,11 @@ def haversine_area(poly):
     from shapely.ops import transform
     from functools import partial
 
-    proj = partial(pyproj.transform,
-                   pyproj.Proj(init='epsg:4326'),
-                   pyproj.Proj(proj='aea', lat_1=poly.bounds[1], lat_2=poly.bounds[3]))
+    proj = partial(
+        pyproj.transform,
+        pyproj.Proj(init='epsg:4326'),
+        pyproj.Proj(proj='aea', lat_1=poly.bounds[1], lat_2=poly.bounds[3])
+    )
     poly_area = transform(proj, poly).area
     return poly_area
 
@@ -83,8 +87,8 @@ def process_data(df, show_hull=True):
         field_polygons.append((field_id, polygon))
 
     travel_distances = []
-    for i in range(len(centroids)-1):
-        travel_distances.append(round(geodesic(centroids[i], centroids[i+1]).km, 2))
+    for i in range(len(centroids) - 1):
+        travel_distances.append(round(geodesic(centroids[i], centroids[i + 1]).km, 2))
     travel_distances.append("-")
 
     for i, dist in enumerate(travel_distances):
@@ -125,9 +129,9 @@ def render_map(coords, field_polygons, show_hull):
 
     return fmap
 
-# Streamlit UI
-st.title("🚜 Field Analyzer – Area & Travel Distance")
-uploaded_file = st.file_uploader("Upload GPS Report CSV", type="csv")
+# --- Streamlit Interface ---
+st.title("🚜 Field Analyzer – Area & Travel Distance Calculator")
+uploaded_file = st.file_uploader("📂 Upload GPS Report CSV", type="csv")
 show_hull = st.checkbox("Show Field Boundaries (Concave Hulls)", value=True)
 
 if uploaded_file:
@@ -136,23 +140,23 @@ if uploaded_file:
         summary, field_polygons, coords = process_data(df, show_hull)
         st.success("✅ Data Processed Successfully.")
 
-        # Display Summary Table
+        # Summary Table
         summary_df = pd.DataFrame(summary)
         st.subheader("📊 Field Summary")
         st.dataframe(summary_df)
 
-        # Display Folium Map
-        st.subheader("🗺️ Field Map")
-        fmap = render_map(coords, field_polygons, show_hull)
-        if fmap:
-            st_data = st_folium(fmap, width=900, height=600)
-        else:
-            st.warning("Unable to render map.")
-
-        # Allow download
+        # Download Button
         csv_buf = io.StringIO()
         summary_df.to_csv(csv_buf, index=False)
         st.download_button("📥 Download Summary as CSV", csv_buf.getvalue(), file_name="field_summary.csv")
+
+        # Map Visualization
+        st.subheader("🗺️ Field Map")
+        fmap = render_map(coords, field_polygons, show_hull)
+        if fmap:
+            st_folium(fmap, width=900, height=600)
+        else:
+            st.warning("Map could not be rendered.")
 
     except Exception as e:
         st.error(f"❌ Error processing file:\n\n{e}")
