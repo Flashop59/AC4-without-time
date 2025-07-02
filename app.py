@@ -130,7 +130,12 @@ def process_gps_data(df, show_hull):
     summary_df = pd.DataFrame({
         "Field ID": field_areas_gunthas.index,
         "Area (Gunthas)": field_areas_gunthas.values,
-        "Travel Distance to Next Field (km)": travel_distances
+        "Travel Distance to Next Field (km)": travel_distances,
+        "Sales/Demo ID": df["Sales/Demo ID"],  # New column for Sales/Demo ID
+        "Breakdown Time": df["Breakdown Time"],  # New column for Breakdown Time
+        "Problem Description": df["Problem Description"],  # New column for Problem Description
+        "Photos": df["Photos"],  # New column for Photos
+        "Videos": df["Videos"]  # New column for Videos
     })
 
     total_area = field_areas_gunthas.sum()
@@ -196,6 +201,12 @@ def main():
         if "Address" not in df.columns:
             st.error("CSV must have an 'Address' column with lat,lon format.")
             return
+
+        required_columns = ["Sales/Demo ID", "Breakdown Time", "Problem Description", "Photos", "Videos"]
+        for col in required_columns:
+            if col not in df.columns:
+                st.error(f"CSV must include the '{col}' column.")
+                return
 
         result = process_gps_data(df, show_hull)
 
