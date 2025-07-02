@@ -13,9 +13,6 @@ from streamlit_folium import folium_static
 
 # ------------------------ CONCAVE HULL ------------------------
 def alpha_shape(points, alpha=0.02):
-    """
-    Compute the concave hull (alpha shape) of a set of points.
-    """
     if len(points) < 4:
         return MultiPoint(list(points)).convex_hull
 
@@ -61,9 +58,6 @@ def calculate_centroid(points):
 
 
 def generate_more_hull_points(coords, num_splits=3):
-    """
-    Densify the polygon outline by interpolating extra points.
-    """
     new_points = []
     for i in range(len(coords)):
         start = coords[i]
@@ -77,8 +71,16 @@ def generate_more_hull_points(coords, num_splits=3):
 
 # ------------------------ PROCESSING ------------------------
 def process_gps_data(df, show_hull):
-    df["lat"] = df["lat"].astype(float)
-    df["lng"] = df["lon"].astype(float)
+    coords_split = df["Address"].str.split(",", expand=True)
+    df["lat"] = coords_split[0].astype(str).str.strip()
+    df["lng"] = coords_split[1].astype(str).str.strip()
+
+    # Convert to float safely
+    df["lat"] = pd.to_numeric(df["lat"], errors="coerce")
+    df["lng"] = pd.to_numeric(df["lng"], errors="coerce")
+
+    # Drop rows with invalid coordinates
+    df = df.dropna(subset=["lat", "lng"])
 
     coords = df[["lat", "lng"]].values
 
@@ -88,17 +90,22 @@ def process_gps_data(df, show_hull):
 
     clustered = df[df["field_id"] != -1]
 
+    if clustered.empty:
+        return None, None, 0, 0
+
     # Area calculation
     field_areas_raw = clustered.groupby("field_id").apply(
         lambda g: calculate_concave_hull_area(g[["lat", "lng"]].values)
     )
-    # Convert to square meters then gunthas
     field_areas_m2 = field_areas_raw * 0.77 * (111000 ** 2)
     field_areas_gunthas = field_areas_m2 / 101.17
 
     # Filter small fields
     valid_fields = field_areas_gunthas[field_areas_gunthas >= 5].index
     field_areas_gunthas = field_areas_gunthas.loc[valid_fields]
+
+    if field_areas_gunthas.empty:
+        return None, None, 0, 0
 
     # Centroids
     centroids = clustered.groupby("field_id").apply(
@@ -115,7 +122,7 @@ def process_gps_data(df, show_hull):
             c2 = centroids.loc[field_ids[i + 1]]
             dist = geodesic(c1, c2).kilometers
             travel_distances.append(dist)
-        travel_distances.append(np.nan)  # Last field has no "next"
+        travel_distances.append(np.nan)
     else:
         travel_distances.append(np.nan)
 
@@ -129,7 +136,7 @@ def process_gps_data(df, show_hull):
     total_area = field_areas_gunthas.sum()
     total_travel_distance = np.nansum(travel_distances)
 
-    # Create Folium Map
+    # Map
     map_center = [df["lat"].mean(), df["lng"].mean()]
     fmap = folium.Map(location=map_center, zoom_start=13)
 
@@ -143,7 +150,6 @@ def process_gps_data(df, show_hull):
 
     plugins.Fullscreen().add_to(fmap)
 
-    # Add points
     for _, row in df.iterrows():
         color = "blue" if row["field_id"] in valid_fields else "red"
         folium.CircleMarker(
@@ -153,7 +159,6 @@ def process_gps_data(df, show_hull):
             fill=True
         ).add_to(fmap)
 
-    # Add hulls
     if show_hull:
         for fid in valid_fields:
             pts = clustered[clustered["field_id"] == fid][["lat", "lng"]].values
@@ -179,21 +184,28 @@ def process_gps_data(df, show_hull):
 
 # ------------------------ STREAMLIT APP ------------------------
 def main():
-    st.set_page_config(page_title="Field Analyzer (No Time)", layout="wide")
-    st.title("Field CSV Analyzer (No Timestamps)")
+    st.set_page_config(page_title="Field Analyzer", layout="wide")
+    st.title("Field CSV Analyzer (Lat/Lon from Address)")
 
-    uploaded = st.file_uploader("Upload CSV file (must have 'lat' and 'lon')", type=["csv"])
+    uploaded = st.file_uploader("Upload CSV with 'Address' column containing 'lat,lon'", type=["csv"])
     show_hull = st.checkbox("Show Concave Hulls", value=True)
 
     if uploaded:
         df = pd.read_csv(uploaded)
-        if not {"lat", "lon"}.issubset(df.columns):
-            st.error("CSV must have 'lat' and 'lon' columns.")
+
+        if "Address" not in df.columns:
+            st.error("CSV must have an 'Address' column with lat,lon format.")
             return
 
-        fmap, summary_df, total_area, total_travel_distance = process_gps_data(df, show_hull)
+        result = process_gps_data(df, show_hull)
 
-        st.success("Analysis completed successfully.")
+        if result[0] is None:
+            st.warning("No valid clusters detected.")
+            return
+
+        fmap, summary_df, total_area, total_travel_distance = result
+
+        st.success("Analysis completed.")
         st.subheader("Field Summary")
         st.dataframe(summary_df)
 
