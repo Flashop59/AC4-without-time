@@ -18,26 +18,30 @@ def extract_coordinates(df):
     if df.shape[1] < 6:
         raise ValueError("Expected at least 6 columns with GPS coordinates in column F.")
 
-    # Clean and extract valid 'lat,lon' strings
-    gps_column = df.iloc[:, 5].astype(str).str.strip()
-    valid_rows = gps_column[gps_column.str.contains(",", na=False)]
+    # Clean and parse Column F safely
+    gps_raw = df.iloc[:, 5].astype(str).str.strip()
 
-    # Split and filter
-    latlon_split = valid_rows.str.split(",", expand=True)
-    if latlon_split.shape[1] < 2:
-        raise ValueError("No valid 'lat,lon' values found in Column F.")
+    lat_list = []
+    lon_list = []
 
-    lat = pd.to_numeric(latlon_split[0], errors="coerce")
-    lon = pd.to_numeric(latlon_split[1], errors="coerce")
-    valid_mask = lat.notna() & lon.notna()
+    for value in gps_raw:
+        if "," not in value:
+            continue
+        parts = value.split(",")
+        if len(parts) != 2:
+            continue
+        try:
+            lat = float(parts[0])
+            lon = float(parts[1])
+            lat_list.append(lat)
+            lon_list.append(lon)
+        except:
+            continue  # Skip bad rows
 
-    lat = lat[valid_mask]
-    lon = lon[valid_mask]
-
-    if lat.empty or lon.empty:
+    if not lat_list or not lon_list:
         raise ValueError("No usable GPS data found after filtering.")
 
-    return pd.DataFrame({"latitude": lat, "longitude": lon})
+    return pd.DataFrame({"latitude": lat_list, "longitude": lon_list})
 
 def haversine_area(poly):
     import pyproj
